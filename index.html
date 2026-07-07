@@ -95,7 +95,7 @@
 <script>
 /* Paste your Lean Comp habit tracker's Apps Script Web App URL below (same one
    used in index.html of your lcn_habit_tracker repo). Leave blank to run on demo data. */
-const SCRIPT_URL = 'https://script.google.com/macros/s/YOUR_ACTUAL_ID/exec';
+const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby0FsfiEBZcbaoLtNtfExIpHNaRkuylq-qjrLZITIQIJUn4JQKuvrlfmm4wiyWbQvmf/exec';
 
 /* Paste your deployed Cloudflare Worker URL below to go live (the proxy that holds
    your API key, enforces the daily cap, and does caching + Haiku/Sonnet routing).
@@ -134,6 +134,27 @@ function calcLogScore(l){
   return Math.min(s,100);
 }
 
+/* Some older logged rows have a known shift bug from the habit tracker's own
+   backend: when "Exercise Completed" has a value, everything after it lands
+   one field over (Sleep shows "Yes", Steps shows a tiny number, etc). This
+   detects that signature and corrects it so scoring stays accurate. The real
+   fix belongs in the Apps Script itself — this is a safe patch on this side. */
+function normalizeLog(l){
+  const sleepVal=l['Sleep (hrs)'];
+  const isShifted=typeof sleepVal==='string'&&(sleepVal==='Yes'||sleepVal==='No');
+  if(!isShifted) return l;
+  const realTimestamp=l['']||l['Timestamp'];
+  return {
+    ...l,
+    'Exercise Completed': sleepVal,
+    'Sleep (hrs)': l['Steps'],
+    'Steps': l['Fruit & Veg Portions'],
+    'Fruit & Veg Portions': (typeof l['Notes']==='number')?l['Notes']:l['Fruit & Veg Portions'],
+    'Notes': typeof l['Notes']==='number'?'':l['Notes'],
+    'Timestamp': realTimestamp,
+  };
+}
+
 async function fetchAllLogs(){
   if(!SCRIPT_URL){
     document.getElementById('config-notice').style.display='block';
@@ -142,7 +163,7 @@ async function fetchAllLogs(){
   try{
     const res=await fetch(SCRIPT_URL+'?action=getLogs');
     const data=await res.json();
-    return Array.isArray(data)?data:DEMO_LOGS;
+    return Array.isArray(data)?data.map(normalizeLog):DEMO_LOGS;
   }catch(e){
     document.getElementById('config-notice').style.display='block';
     document.getElementById('config-notice').textContent='Could not reach your Apps Script URL, so this is running on demo data instead. Check the URL and that the deployment access is set to Anyone.';
