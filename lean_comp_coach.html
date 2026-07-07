@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Lean Comp Nutrition · AI Coach (prototype)</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600&display=swap');
+  *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --green:#5a9e2f;--green-dark:#3d7a1a;--green-light:#eaf5e0;
+    --red:#cc2200;--orange:#f5a800;--white:#ffffff;
+    --bg:#f4f9f0;--card:#ffffff;--border:#ddeece;
+    --text:#1a2e0a;--muted:#7a9060;--shadow:0 2px 12px rgba(90,158,47,.10);
+  }
+  html,body{background:var(--bg);color:var(--text);font-family:"DM Sans",sans-serif;min-height:100vh}
+  .nav{background:var(--white);border-bottom:3px solid var(--green);padding:14px 20px;position:sticky;top:0;box-shadow:var(--shadow)}
+  .nav-title{font-family:"Nunito",sans-serif;font-size:17px;font-weight:800;color:var(--green-dark)}
+  .nav-title span{color:var(--red)}
+  .nav-sub{font-size:12px;color:var(--muted);font-weight:600;margin-top:2px}
+  .wrap{max-width:520px;margin:0 auto;padding:16px 16px 60px}
+  .card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:18px;margin-bottom:14px;box-shadow:var(--shadow)}
+  .notice{background:#fff8e6;border:1px solid var(--orange);border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13px;line-height:1.5}
+  .notice code{background:#fff3cc;padding:1px 5px;border-radius:4px;font-size:12px}
+  label{display:block;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-bottom:6px}
+  select,input[type=text]{width:100%;padding:12px 14px;border:1.5px solid var(--border);border-radius:10px;font-size:15px;font-family:inherit;background:var(--white);color:var(--text)}
+  select:focus,input:focus{outline:none;border-color:var(--green)}
+  button{background:var(--green);color:#fff;border:none;border-radius:10px;padding:12px 18px;font-size:14px;font-weight:700;font-family:inherit;cursor:pointer;margin-top:10px}
+  button:hover{background:var(--green-dark)}
+  button:disabled{background:var(--border);color:var(--muted);cursor:default}
+  button.ghost{background:none;color:var(--green-dark);border:1.5px solid var(--border);margin-left:8px}
+  .stat-row{display:flex;gap:10px}
+  .stat{flex:1;background:var(--green-light);border-radius:10px;padding:10px;text-align:center}
+  .stat b{display:block;font-family:"Nunito",sans-serif;font-size:20px;color:var(--green-dark)}
+  .stat span{font-size:11px;color:var(--muted);font-weight:700;text-transform:uppercase}
+  .weak-chip{margin-top:10px;font-size:12.5px;background:#fdeeea;color:var(--red);border-radius:8px;padding:8px 10px;font-weight:600}
+  #chat-log{display:flex;flex-direction:column;gap:8px;max-height:360px;overflow-y:auto;padding-bottom:6px}
+  .bubble{padding:9px 13px;border-radius:12px;font-size:14px;line-height:1.45;max-width:88%}
+  .b-coach{background:var(--green-light);color:var(--text);align-self:flex-start;border-bottom-left-radius:3px}
+  .b-user{background:var(--green);color:#fff;align-self:flex-end;border-bottom-right-radius:3px}
+  .b-typing{color:var(--muted);font-style:italic;font-size:13px}
+  .input-row{display:flex;gap:8px;margin-top:12px}
+  .input-row input{flex:1}
+  .input-row button{margin-top:0}
+  .summary-line{font-size:13.5px;line-height:1.5;margin-bottom:8px;padding-left:20px;position:relative}
+  .summary-line::before{content:"✓";position:absolute;left:0;color:var(--green-dark);font-weight:700}
+  .summary-line.dots{filter:none;color:var(--muted)}
+  .toggle-row{display:flex;align-items:center;gap:8px;margin-top:12px;font-size:12.5px;color:var(--muted)}
+  .badge{display:inline-block;background:var(--green-light);color:var(--green-dark);font-size:11.5px;font-weight:700;padding:4px 10px;border-radius:20px;margin-top:8px}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-title">LEAN COMP <span>NUTRITION</span></div>
+  <div class="nav-sub">AI coach · prototype</div>
+</div>
+
+<div class="wrap">
+
+  <div class="notice" id="config-notice" style="display:none">
+    Preview mode. No <code>SCRIPT_URL</code> is set, so this is running on demo data for
+    <code>Demo Client</code>, and no <code>WORKER_URL</code> is set, so the coach is talking to the
+    sandbox rather than your deployed proxy. To go live: paste your habit tracker's Web App URL into
+    <code>SCRIPT_URL</code> and your Cloudflare Worker URL into <code>WORKER_URL</code> near the top of
+    the script, then reload. The daily cap and caching only take effect once the Worker is connected.
+  </div>
+
+  <div class="card" id="picker-card">
+    <label>Client</label>
+    <select id="client-select"><option value="">Loading clients…</option></select>
+    <label style="margin-top:14px">Test as tier</label>
+    <select id="tier-select" onchange="clientTier=this.value">
+      <option value="free">Free (5/day cap)</option>
+      <option value="pro">Pro (100/day)</option>
+    </select>
+    <button onclick="loadSelectedClient()">Start check-in</button>
+  </div>
+
+  <div class="card" id="stats-card" style="display:none"></div>
+
+  <div class="card" id="chat-card" style="display:none">
+    <div id="chat-log"></div>
+    <div class="input-row">
+      <input type="text" id="chat-input" placeholder="Type a reply…" onkeydown="if(event.key==='Enter')sendMessage()">
+      <button id="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+    <button class="ghost" id="end-btn" onclick="endSession()" style="width:100%">End check-in &amp; get summary</button>
+  </div>
+
+  <div class="card" id="summary-card" style="display:none"></div>
+
+</div>
+
+<script>
+/* Paste your Lean Comp habit tracker's Apps Script Web App URL below (same one
+   used in index.html of your lcn_habit_tracker repo). Leave blank to run on demo data. */
+const SCRIPT_URL = '';
+
+/* Paste your deployed Cloudflare Worker URL below to go live (the proxy that holds
+   your API key, enforces the daily cap, and does caching + Haiku/Sonnet routing).
+   Leave blank to run against the sandbox for testing in this preview. */
+const WORKER_URL = '';
+
+/* Which tier the client you're testing is on: 'free' (5/day cap) or 'pro'.
+   In production this comes from your own client records, not a toggle. */
+let clientTier = 'free';
+
+const DEMO_LOGS = [
+  {'Client Name':'Demo Client','Date':'2026-06-25','Water (L)':'2.6','Sleep (hrs)':'7','Steps':'9200','Fruit & Veg Portions':'5','Protein Target Hit':'Yes','No Alcohol':'Yes','Exercise Completed':'Yes','Notes':''},
+  {'Client Name':'Demo Client','Date':'2026-06-26','Water (L)':'2.1','Sleep (hrs)':'6','Steps':'6100','Fruit & Veg Portions':'3','Protein Target Hit':'Yes','No Alcohol':'Yes','Exercise Completed':'No','Notes':''},
+  {'Client Name':'Demo Client','Date':'2026-06-27','Water (L)':'1.4','Sleep (hrs)':'5','Steps':'4200','Fruit & Veg Portions':'1','Protein Target Hit':'No','No Alcohol':'No','Exercise Completed':'No','Notes':'Rough week at work'},
+  {'Client Name':'Demo Client','Date':'2026-06-28','Water (L)':'1.8','Sleep (hrs)':'6','Steps':'5300','Fruit & Veg Portions':'2','Protein Target Hit':'No','No Alcohol':'Yes','Exercise Completed':'No','Notes':''},
+  {'Client Name':'Demo Client','Date':'2026-06-29','Water (L)':'2.0','Sleep (hrs)':'6','Steps':'6000','Fruit & Veg Portions':'2','Protein Target Hit':'Yes','No Alcohol':'Yes','Exercise Completed':'No','Notes':''},
+  {'Client Name':'Demo Client','Date':'2026-06-30','Water (L)':'1.6','Sleep (hrs)':'5','Steps':'3800','Fruit & Veg Portions':'1','Protein Target Hit':'No','No Alcohol':'No','Exercise Completed':'No','Notes':''},
+  {'Client Name':'Demo Client','Date':'2026-07-01','Water (L)':'2.3','Sleep (hrs)':'7','Steps':'7100','Fruit & Veg Portions':'3','Protein Target Hit':'Yes','No Alcohol':'Yes','Exercise Completed':'Yes','Notes':''},
+];
+
+let allLogs = [];
+let currentClient = '';
+let analytics = null;
+let conversation = [];
+let systemPrompt = '';
+
+function scoreWater(v){const l=parseFloat(v||0);if(l<=0)return 0;if(l<1.5)return 4;if(l<2)return 8;if(l<2.5)return 12;return 15;}
+function scoreSleep(v){const h=parseFloat(v||0);if(h<=0)return 0;if(h<5)return 0;if(h<6)return 4;if(h<7)return 7;if(h<8)return 11;if(h<9)return 14;return 15;}
+function scoreSteps(v){const s=parseInt(v||0);if(s<=0)return 0;if(s<4000)return 4;if(s<6000)return 8;if(s<8000)return 12;return 15;}
+function scoreFV(v){const p=parseInt(v||0);if(p<=0)return 0;if(p<2)return 4;if(p<3)return 7;if(p<4)return 10;if(p<5)return 13;return 15;}
+function calcLogScore(l){
+  let s=scoreWater(l['Water (L)'])+scoreSleep(l['Sleep (hrs)'])+scoreSteps(l['Steps'])+scoreFV(l['Fruit & Veg Portions']);
+  if(l['Protein Target Hit']==='Yes')s+=15;
+  if(l['No Alcohol']==='Yes')s+=15;
+  if(l['Exercise Completed']==='Yes'||l['exercise']===true||l['exercise']==='true')s+=10;
+  return Math.min(s,100);
+}
+
+async function fetchAllLogs(){
+  if(!SCRIPT_URL){
+    document.getElementById('config-notice').style.display='block';
+    return DEMO_LOGS;
+  }
+  try{
+    const res=await fetch(SCRIPT_URL+'?action=getLogs');
+    const data=await res.json();
+    return Array.isArray(data)?data:DEMO_LOGS;
+  }catch(e){
+    document.getElementById('config-notice').style.display='block';
+    document.getElementById('config-notice').textContent='Could not reach your Apps Script URL, so this is running on demo data instead. Check the URL and that the deployment access is set to Anyone.';
+    return DEMO_LOGS;
+  }
+}
+
+function computeAnalytics(logs){
+  const sorted=[...logs].sort((a,b)=>new Date(a['Date'])-new Date(b['Date']));
+  const scored=sorted.map(l=>({...l,_score:calcLogScore(l)}));
+  const total=scored.length;
+  const last7=scored.slice(-7);
+  const avg7=last7.length?Math.round(last7.reduce((a,l)=>a+l._score,0)/last7.length):0;
+  const dates=[...new Set(scored.map(l=>l['Date']))].sort().reverse();
+  let streak=0;
+  const now=new Date();now.setHours(0,0,0,0);
+  for(let i=0;i<dates.length;i++){
+    const d=new Date(dates[i]);d.setHours(0,0,0,0);
+    const diff=Math.round((now-d)/86400000);
+    if(diff===i||diff===i+1)streak++;else break;
+  }
+  const rates={
+    water:last7.length?Math.round(last7.reduce((a,l)=>a+scoreWater(l['Water (L)']),0)/last7.length/15*100):0,
+    sleep:last7.length?Math.round(last7.reduce((a,l)=>a+scoreSleep(l['Sleep (hrs)']),0)/last7.length/15*100):0,
+    steps:last7.length?Math.round(last7.reduce((a,l)=>a+scoreSteps(l['Steps']),0)/last7.length/15*100):0,
+    fv:last7.length?Math.round(last7.reduce((a,l)=>a+scoreFV(l['Fruit & Veg Portions']),0)/last7.length/15*100):0,
+    protein:last7.length?Math.round(last7.filter(l=>l['Protein Target Hit']==='Yes').length/last7.length*100):0,
+    alcohol:last7.length?Math.round(last7.filter(l=>l['No Alcohol']==='Yes').length/last7.length*100):0,
+    exercise:last7.length?Math.round(last7.filter(l=>l['Exercise Completed']==='Yes').length/last7.length*100):0,
+  };
+  const labels={water:'Water intake',sleep:'Sleep',steps:'Steps',fv:'Fruit & veg',protein:'Protein target',alcohol:'No alcohol',exercise:'Exercise'};
+  let weakestKey=Object.keys(rates).reduce((a,b)=>rates[a]<=rates[b]?a:b);
+  const recentText=last7.slice(-5).map(l=>
+    `${l['Date']}: water ${l['Water (L)']||0}L, sleep ${l['Sleep (hrs)']||0}h, steps ${l['Steps']||0}, fruit/veg ${l['Fruit & Veg Portions']||0}, protein hit: ${l['Protein Target Hit']||'No'}, no alcohol: ${l['No Alcohol']||'No'}, exercise: ${l['Exercise Completed']||'No'}, score ${l._score}/100${l['Notes']?', notes: "'+l['Notes']+'"':''}`
+  ).join('\n');
+  return {total,avg7,streak,rates,weakest:{key:weakestKey,label:labels[weakestKey],rate:rates[weakestKey]},recentText,lastDate:dates[0]||null};
+}
+
+async function init(){
+  allLogs=await fetchAllLogs();
+  const names=[...new Set(allLogs.map(l=>l['Client Name']).filter(Boolean))].sort();
+  const sel=document.getElementById('client-select');
+  sel.innerHTML=names.length?names.map(n=>`<option value="${n}">${n}</option>`).join(''):'<option value="">No clients found</option>';
+}
+init();
+
+function loadSelectedClient(){
+  const name=document.getElementById('client-select').value;
+  if(!name)return;
+  currentClient=name;
+  const logs=allLogs.filter(l=>l['Client Name']===name);
+  analytics=computeAnalytics(logs);
+
+  const statsCard=document.getElementById('stats-card');
+  statsCard.style.display='block';
+  statsCard.innerHTML=`
+    <div class="stat-row">
+      <div class="stat"><b>${analytics.streak}</b><span>Day streak</span></div>
+      <div class="stat"><b>${analytics.avg7}</b><span>7-day avg</span></div>
+      <div class="stat"><b>${analytics.total}</b><span>Total logs</span></div>
+    </div>
+    <div class="weak-chip">Weakest lever right now: ${analytics.weakest.label} (${analytics.weakest.rate}% of target over the last 7 logs)</div>
+  `;
+
+  document.getElementById('chat-card').style.display='block';
+  document.getElementById('summary-card').style.display='none';
+  document.getElementById('summary-card').innerHTML='';
+  document.getElementById('chat-log').innerHTML='';
+  conversation=[];
+
+  systemPrompt=`You are the Lean Comp Nutrition coach, texting ${currentClient} directly for their check-in.
+Voice: direct, warm, no corporate fluff, like a real coach who knows this client's numbers. Short messages, 2-4 sentences max.
+Never invent a statistic that is not in the data below. If you don't have a number, don't guess it.
+
+${currentClient}'s real data:
+- Current streak: ${analytics.streak} days
+- 7-day average score: ${analytics.avg7}/100
+- Total logs recorded: ${analytics.total}
+- Weakest habit over the last 7 logs: ${analytics.weakest.label} (${analytics.weakest.rate}% of target)
+- Habit hit-rates (last 7 logs): water ${analytics.rates.water}%, sleep ${analytics.rates.sleep}%, steps ${analytics.rates.steps}%, fruit/veg ${analytics.rates.fv}%, protein target ${analytics.rates.protein}%, no-alcohol ${analytics.rates.alcohol}%, exercise ${analytics.rates.exercise}%
+- Last 5 logged days:
+${analytics.recentText || 'No logs yet.'}`;
+
+  startSession();
+}
+
+function addBubble(text,who){
+  const log=document.getElementById('chat-log');
+  const div=document.createElement('div');
+  div.className='bubble '+(who==='coach'?'b-coach':'b-user');
+  div.textContent=text;
+  log.appendChild(div);
+  log.scrollTop=log.scrollHeight;
+  return div;
+}
+
+function lockInput(){
+  document.getElementById('chat-input').disabled=true;
+  document.getElementById('send-btn').disabled=true;
+  document.getElementById('chat-input').placeholder='Daily limit reached';
+}
+
+/* Thrown when the client has hit their daily cap — carries the upgrade message. */
+class CapReached extends Error{constructor(msg){super(msg);this.name='CapReached';}}
+
+/* mode: 'chat' (routine turns → Haiku) or 'summary' (end of session → Sonnet).
+   If WORKER_URL is set, all traffic goes through your proxy (key hidden, cap +
+   caching + routing enforced server-side). If not, it falls back to the sandbox
+   so you can still test the whole flow in this preview. */
+async function callClaude(messages,mode){
+  if(WORKER_URL){
+    const res=await fetch(WORKER_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({clientId:currentClient,tier:clientTier,mode,system:systemPrompt,messages})
+    });
+    const data=await res.json();
+    if(res.status===429&&data.error==='cap_reached') throw new CapReached(data.message);
+    if(!res.ok) throw new Error(data.error||'proxy_error');
+    return (data.text||'').trim();
+  }
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({model:mode==='summary'?'claude-sonnet-4-6':'claude-haiku-4-5-20251001',max_tokens:mode==='summary'?400:300,system:systemPrompt,messages})
+  });
+  const data=await res.json();
+  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('\n').trim();
+}
+
+async function startSession(){
+  const log=document.getElementById('chat-log');
+  const typing=document.createElement('div');
+  typing.className='bubble b-coach b-typing';
+  typing.textContent='Typing…';
+  log.appendChild(typing);
+  try{
+    const reply=await callClaude([{role:'user',content:'Open the check-in with a short, specific message based on my real data above. Reference something concrete from it.'}],'chat');
+    typing.remove();
+    addBubble(reply,'coach');
+    conversation.push({role:'assistant',content:reply});
+  }catch(e){
+    typing.remove();
+    if(e instanceof CapReached){addBubble(e.message,'coach');lockInput();}
+    else addBubble('Could not reach the coach right now. Check your connection and try again.','coach');
+  }
+}
+
+async function sendMessage(){
+  const input=document.getElementById('chat-input');
+  const text=input.value.trim();
+  if(!text)return;
+  input.value='';
+  addBubble(text,'user');
+  conversation.push({role:'user',content:text});
+  document.getElementById('send-btn').disabled=true;
+  const log=document.getElementById('chat-log');
+  const typing=document.createElement('div');
+  typing.className='bubble b-coach b-typing';
+  typing.textContent='Typing…';
+  log.appendChild(typing);
+  log.scrollTop=log.scrollHeight;
+  try{
+    const reply=await callClaude(conversation,'chat');
+    typing.remove();
+    addBubble(reply,'coach');
+    conversation.push({role:'assistant',content:reply});
+  }catch(e){
+    typing.remove();
+    if(e instanceof CapReached){addBubble(e.message,'coach');lockInput();return;}
+    addBubble('Message failed to send. Try again.','coach');
+  }
+  document.getElementById('send-btn').disabled=false;
+}
+
+async function endSession(){
+  const card=document.getElementById('summary-card');
+  card.style.display='block';
+  card.innerHTML='<p style="font-size:13px;color:var(--muted)">Building session summary…</p>';
+  const jsonInstruction={role:'user',content:'End the check-in now. Respond with ONLY raw JSON, no markdown fences, no preamble, in this exact shape: {"key_insight":"one sentence on the clearest pattern from this check-in and the real data","action_item":"one concrete, specific next step for this client","pattern_noticed":"one sentence noting a trend across their recent logs"}'};
+  try{
+    const raw=await callClaude([...conversation,jsonInstruction],'summary');
+    const clean=raw.replace(/```json|```/g,'').trim();
+    const parsed=JSON.parse(clean);
+    renderSummary(parsed);
+  }catch(e){
+    card.innerHTML='<p style="font-size:13px;color:var(--red)">Could not build a summary this time. Try ending the check-in again.</p>';
+  }
+}
+
+let lastSummary=null;
+function renderSummary(parsed){
+  lastSummary=parsed;
+  const card=document.getElementById('summary-card');
+  card.innerHTML=`
+    <label>Session summary</label>
+    <div class="summary-line">${parsed.key_insight}</div>
+    <div id="sum-action" class="summary-line">${parsed.action_item}</div>
+    <div id="sum-pattern" class="summary-line">${parsed.pattern_noticed}</div>
+    <span class="badge">Full check-ins</span>
+    <div class="toggle-row">
+      <input type="checkbox" id="preview-toggle" onchange="togglePreview()">
+      <label style="text-transform:none;font-weight:600;margin:0" for="preview-toggle">Preview how this looks for a free-tier client</label>
+    </div>
+  `;
+}
+function togglePreview(){
+  const on=document.getElementById('preview-toggle').checked;
+  const a=document.getElementById('sum-action');
+  const p=document.getElementById('sum-pattern');
+  if(on){
+    a.textContent='•••• ••••• ••••••• •••• •• •••• •••••••';
+    p.textContent='•••••• •••• ••• •••••••• •• •••• ••••••';
+  }else{
+    a.textContent=lastSummary.action_item;
+    p.textContent=lastSummary.pattern_noticed;
+  }
+}
+</script>
+</body>
+</html>
